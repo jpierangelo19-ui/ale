@@ -1,6 +1,6 @@
 import spiceypy as spice
 
-from ale.base import Driver
+from ale.base import Driver, WrongInstrumentException
 from ale.base.data_naif import NaifSpice
 from ale.base.label_isis import IsisLabel
 from ale.base.label_pds3 import Pds3Label
@@ -216,7 +216,10 @@ class Chandrayaan1M3IsisLabelNaifSpiceDriver(LineScanner, IsisLabel, NaifSpice, 
         inst_id_lookup = {
             "M3" : "CHANDRAYAAN-1_M3"
         }
-        return inst_id_lookup[super().instrument_id] 
+        key = super().instrument_id
+        if key not in inst_id_lookup:
+            raise WrongInstrumentException(f"Unknown instrument id: {key}.")
+        return inst_id_lookup[key] 
     
     @property
     def sensor_model_version(self):
@@ -245,7 +248,10 @@ class Chandrayaan1MRFFRIsisLabelNaifSpiceDriver(Radar, IsisLabel, NaifSpice, Cha
         inst_id_lookup = {
             "MRFFR" : "CHANDRAYAAN-1_MRFFR"
         }
-        return inst_id_lookup[super().instrument_id] 
+        key = super().instrument_id
+        if key not in inst_id_lookup:
+            raise WrongInstrumentException(f"Unknown instrument id: {key}.")
+        return inst_id_lookup[key] 
 
     @property
     def spacecraft_name(self):
@@ -451,11 +457,17 @@ class Chandrayaan2TMC2IsisLabelNaifSpiceDriver(LineScanner, IsisLabel, NaifSpice
         : str
           Frame Reference for chandrayaan2 terrain mapping camera
         """
-        inst_id_lookup = {
-            "TMC-2" : "CHANDRAYAAN-2 ORBITER"
+
+        naif_to_inst_id_lookup = {
+            -152211 : "CH2_TMC_FORE",
+            -152210 : "CH2_TMC_NADIR",
+            -152212 : "CH2_TMC_AFT"
         }
-        return inst_id_lookup[super().instrument_id] 
-    
+        try:
+            return naif_to_inst_id_lookup[self.ikid]
+        except KeyError:
+            raise WrongInstrumentException(f"Unknown instrument ikid: {self.ikid}.")
+   
     @property
     def ikid(self):
         """
@@ -507,21 +519,6 @@ class Chandrayaan2TMC2IsisLabelNaifSpiceDriver(LineScanner, IsisLabel, NaifSpice
         if not hasattr(self, "_ephemeris_start_time"):
           self._ephemeris_start_time = self.spiceql_call("utcToEt", {"utc": self.utc_start_time.strftime("%Y-%m-%d %H:%M:%S.%f")})
         return self._ephemeris_start_time
-
-    @property
-    def ephemeris_stop_time(self):
-        """
-        The spacecraft clock stop count, frequently used to determine the stop time
-        of the image.
-
-        Returns
-        -------
-        : str
-          Spacecraft clock stop count
-        """
-        if not hasattr(self, "_ephemeris_stop_time"):
-            self._ephemeris_stop_time = self.spiceql_call("utcToEt", {"utc": self.utc_stop_time.strftime("%Y-%m-%d %H:%M:%S.%f")})
-        return self._ephemeris_stop_time
 
     @property
     def detector_center_line(self):
@@ -612,81 +609,7 @@ class Chandrayaan2TMC2IsisLabelNaifSpiceDriver(LineScanner, IsisLabel, NaifSpice
           Frame id that applies a correction.
         """
         
-        # Subtract 1000 as all ids are negative and any subsequent one usually
-        # has increasing magnitude.
-        return self.original_naif_sensor_frame_id - 1000
-
-    @property
-    def ephemeris_time(self):
-        """
-        Returns an array of times between the start/stop ephemeris times
-        based on the number of lines in the image.
-        Expects ephemeris start/stop times to be defined. These should be
-        floating point numbers containing the start and stop times of the
-        images.
-        Expects image_lines to be defined. This should be an integer containing
-        the number of lines in the image.
-
-        Returns
-        -------
-        : ndarray
-          ephemeris times split based on image lines
-        """
-
-        # Override the parent class logic, as returning the ephemeris time for
-        # every single line does not scale for Chandrayaan2 TMC images, which
-        # can have 189999 lines. Sampling at every 10th line should be enough.
-        num = self.image_lines
-        if num > 20000:
-            num = int(float(num) / 10.0)
-        if not hasattr(self, "_ephemeris_time"):
-            self._ephemeris_time = \
-              numpy.linspace(self.ephemeris_start_time, self.ephemeris_stop_time, num + 1)
-        return self._ephemeris_time
-
-    @property
-    def frame_chain(self):
-        """
-        Returns a modified frame chain with with an additional coordinate transformation from Chandrayaan satellite to camera.
-
-        Returns
-        -------
-        : object
-          A networkx frame chain object
-        """
-        
-        if not hasattr(self, '_frame_chain'):
-        
-          #self._frame_chain = super().frame_chain
-          nadir = self._props.get('nadir', False)
-          exact_ck_times = self._props.get('exact_ck_times', True)
-        
-          self._frame_chain = \
-           FrameChain.from_spice(sensor_frame=self.original_naif_sensor_frame_id,
-                                 target_frame=self.target_frame_id,
-                                 center_ephemeris_time=self.center_ephemeris_time,
-                                 ephemeris_times=self.ephemeris_time,
-                                 exact_ck_times= exact_ck_times,
-                                 inst_time_bias=self.instrument_time_bias,
-                                 use_web=self.use_web,
-                                 mission=self.spiceql_mission,
-                                 search_kernels=self.search_kernels)
-
-          # Fix for the the Chandrayaan2 TMC2 instrument as outlined in the
-          # original_naif_sensor_frame_id() docstring. This swaps the x and z
-          # axes, and negates the y axis.
-          # old
-          #mat = numpy.array([[0, 0, 1], [0, -1, 0], [1, 0, 0]])
-          # new
-          mat = numpy.array([[0, 0, 1], [-1, 0, 0], [0, -1, 0]])
-          
-          quats = Rotation.from_matrix(mat).as_quat()
-          rotation = ConstantRotation(quats, 
-                                      self.sensor_frame_id, 
-                                      self.original_naif_sensor_frame_id)
-          self._frame_chain.add_edge(rotation=rotation)
-                                
-        return self._frame_chain
+        return self.original_naif_sensor_frame_id - 10
 
 class Chandrayaan2OHRCIsisLabelNaifSpiceDriver(LineScanner, IsisLabel, NaifSpice, NoDistortion, Driver):
     
@@ -701,9 +624,12 @@ class Chandrayaan2OHRCIsisLabelNaifSpiceDriver(LineScanner, IsisLabel, NaifSpice
           Frame Reference for Chandrayaan2 Orbiter High Resolution Camera
         """
         inst_id_lookup = {
-            "OHRC" : "CHANDRAYAAN-2 ORBITER"
+            "OHRC" : "CH2_OHRC"
         }
-        return inst_id_lookup[super().instrument_id] 
+        key = super().instrument_id
+        if key not in inst_id_lookup:
+            raise WrongInstrumentException(f"Unknown instrument id: {key}.")
+        return inst_id_lookup[key] 
     
     @property
     def ikid(self):
@@ -813,7 +739,7 @@ class Chandrayaan2OHRCIsisLabelNaifSpiceDriver(LineScanner, IsisLabel, NaifSpice
         """
         # meters to mm
         pixel_size = self.naif_keywords[f"INS{self.ikid}_PIXEL_SIZE"] * 1000
-        return [0.0, 0.0, 1/pixel_size]
+        return [0.0, 1/pixel_size, 0.0]
     
     @property
     def focal2pixel_samples(self):
@@ -828,7 +754,7 @@ class Chandrayaan2OHRCIsisLabelNaifSpiceDriver(LineScanner, IsisLabel, NaifSpice
         """
         # meters to mm
         pixel_size = self.naif_keywords[f"INS{self.ikid}_PIXEL_SIZE"] * 1000
-        return [0.0, -1/pixel_size, 0.0]
+        return [0.0, 0.0, 1/pixel_size]
 
     @property
     def original_naif_sensor_frame_id(self):
@@ -859,75 +785,4 @@ class Chandrayaan2OHRCIsisLabelNaifSpiceDriver(LineScanner, IsisLabel, NaifSpice
           Frame id that applies a correction.
         """
         
-        # Subtract 1000 as all ids are negative and any subsequent one usually
-        # has increasing magnitude.
-        return self.original_naif_sensor_frame_id - 1000
-
-    @property
-    def ephemeris_time(self):
-        """
-        Returns an array of times between the start/stop ephemeris times
-        based on the number of lines in the image.
-        Expects ephemeris start/stop times to be defined. These should be
-        floating point numbers containing the start and stop times of the
-        images.
-        Expects image_lines to be defined. This should be an integer containing
-        the number of lines in the image.
-
-        Returns
-        -------
-        : ndarray
-          ephemeris times split based on image lines
-        """
-
-        # Override the parent class logic, as returning the ephemeris time for
-        # every single line does not scale for Chandrayaan2 OHRC images, which
-        # can have 101075 lines. Sampling at every 10th line should be enough.
-        num = self.image_lines
-        if num > 20000:
-            num = int(float(num) / 10.0)
-        if not hasattr(self, "_ephemeris_time"):
-            self._ephemeris_time = \
-              numpy.linspace(self.ephemeris_start_time, self.ephemeris_stop_time, num + 1)
-        return self._ephemeris_time
-
-    @property
-    def frame_chain(self):
-        """
-        Returns a modified frame chain with with an additional coordinate transformation from Chandrayaan satellite to camera.
-
-        Returns
-        -------
-        : object
-          A networkx frame chain object
-        """
-        
-        if not hasattr(self, '_frame_chain'):
-        
-          nadir = self._props.get('nadir', False)
-          exact_ck_times = self._props.get('exact_ck_times', True)
-        
-          self._frame_chain = \
-           FrameChain.from_spice(sensor_frame=self.original_naif_sensor_frame_id,
-                                 target_frame=self.target_frame_id,
-                                 center_ephemeris_time=self.center_ephemeris_time,
-                                 ephemeris_times=self.ephemeris_time,
-                                 exact_ck_times= exact_ck_times,
-                                 inst_time_bias=self.instrument_time_bias,
-                                 use_web=self.use_web,
-                                 mission=self.spiceql_mission,
-                                 search_kernels=self.search_kernels)
-
-          # Fix for the the Chandrayaan2 OHRC instrument as outlined in the
-          # original_naif_sensor_frame_id() docstring. This swaps the x and z
-          # axes, and negates the y axis.
-          mat = numpy.array([[0, 0, 1],
-                             [0, -1, 0],
-                             [1, 0, 0]])
-          quats = Rotation.from_matrix(mat).as_quat()
-          rotation = ConstantRotation(quats, 
-                                      self.sensor_frame_id, 
-                                      self.original_naif_sensor_frame_id)
-          self._frame_chain.add_edge(rotation=rotation)
-
-        return self._frame_chain
+        return self.original_naif_sensor_frame_id - 10

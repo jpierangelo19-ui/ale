@@ -1,7 +1,7 @@
 import numpy as np
 import pvl
 
-from ale.base import Driver
+from ale.base import Driver, WrongInstrumentException
 from ale.base.type_distortion import NoDistortion, LegendreDistortion
 from ale.base.data_naif import NaifSpice
 from ale.base.label_isis import IsisLabel
@@ -29,7 +29,10 @@ class NewHorizonsLorriIsisLabelNaifSpiceDriver(Framer, IsisLabel, NaifSpice, NoD
         id_lookup = {
             "LORRI" : "NH_LORRI"
         }
-        return id_lookup[super().instrument_id]
+        key = super().instrument_id
+        if key not in id_lookup:
+            raise WrongInstrumentException(f"Unknown instrument id: {key}.")
+        return id_lookup[key]
 
     @property
     def ephemeris_stop_time(self):
@@ -122,7 +125,10 @@ class NewHorizonsLeisaIsisLabelNaifSpiceDriver(LineScanner, IsisLabel, NaifSpice
         id_lookup = {
             "LEISA" : "NH_RALPH_LEISA"
         }
-        return id_lookup[super().instrument_id]
+        key = super().instrument_id
+        if key not in id_lookup:
+            raise WrongInstrumentException(f"Unknown instrument id: {key}.")
+        return id_lookup[key]
 
     @property
     def ikid(self):
@@ -269,7 +275,10 @@ class NewHorizonsMvicIsisLabelNaifSpiceDriver(Framer, IsisLabel, NaifSpice, Lege
         id_lookup = {
           "MVIC_FRAMING" : "NH_MVIC"
         }
-        return id_lookup[super().instrument_id]
+        key = super().instrument_id
+        if key not in id_lookup:
+            raise WrongInstrumentException(f"Unknown instrument id: {key}.")
+        return id_lookup[key]
 
 
     @property
@@ -343,8 +352,10 @@ class NewHorizonsMvicIsisLabelNaifSpiceDriver(Framer, IsisLabel, NaifSpice, Lege
             band_times = self.label['IsisCube']['BandBin']['UtcTime']
             self._ephem_band_times = []
             for time in band_times:
-                if type(time) is pvl.Quantity:
-                   time = time.value
+                if isinstance(time, pvl.collections.Quantity):
+                    time = time.value
+                elif isinstance(time, dict):
+                    time = time["value"]
                 self._ephem_band_times.append(self.spiceql_call("utcToEt", {"utc": time.strftime("%Y-%m-%d %H:%M:%S.%f")}))
         return self._ephem_band_times
 
@@ -447,7 +458,11 @@ class NewHorizonsMvicTdiIsisLabelNaifSpiceDriver(LineScanner, IsisLabel, NaifSpi
         id_lookup = {
             "MVIC_TDI" : "ISIS_NH_RALPH_MVIC_METHANE"
         }
-        return id_lookup[super().instrument_id]
+        
+        key = super().instrument_id
+        if key not in id_lookup:
+            raise WrongInstrumentException(f"Unknown instrument id: {key}.")
+        return id_lookup[key]
 
     @property
     def ikid(self):

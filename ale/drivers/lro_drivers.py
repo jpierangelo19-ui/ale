@@ -1,9 +1,9 @@
+import numpy as np
+import pvl
 import spiceypy as spice 
 
-import numpy as np
-
 from pyspiceql import pyspiceql
-from ale.base import Driver
+from ale.base import Driver, WrongInstrumentException
 from ale.base.data_naif import NaifSpice
 from ale.base.data_isis import IsisSpice
 from ale.base.label_pds3 import Pds3Label
@@ -40,6 +40,7 @@ class LroLrocNacPds3LabelNaifSpiceDriver(LineScanner, NaifSpice, Pds3Label, Driv
             return "LRO_LROCNACL"
         elif instrument == "LROC" and frame_id == "RIGHT":
             return "LRO_LROCNACR"
+        raise WrongInstrumentException(f"Unknown LRO instrument/frame combination: {instrument}/{frame_id}.")
 
     @property
     def spacecraft_name(self):
@@ -302,7 +303,10 @@ class LroLrocNacIsisLabelNaifSpiceDriver(LineScanner, NaifSpice, IsisLabel, Driv
             "NACR": "LRO_LROCNACR"
         }
 
-        return id_lookup[super().instrument_id]
+        key = super().instrument_id
+        if key not in id_lookup:
+            raise WrongInstrumentException(f"Unknown instrument id: {key}.")
+        return id_lookup[key]
 
     @property
     def sensor_model_version(self):
@@ -547,7 +551,10 @@ class LroLrocNacIsisLabelIsisSpiceDriver(LineScanner, IsisSpice, IsisLabel, Driv
             "NACR": "LRO_LROCNACR"
         }
 
-        return id_lookup[super().instrument_id]
+        key = super().instrument_id
+        if key not in id_lookup:
+            raise WrongInstrumentException(f"Unknown instrument id: {key}.")
+        return id_lookup[key]
 
     @property
     def sensor_model_version(self):
@@ -742,7 +749,10 @@ class LroMiniRfIsisLabelNaifSpiceDriver(Radar, NaifSpice, IsisLabel, Driver):
             "MRFLRO": "LRO_MINIRF"
         }
 
-        return id_lookup[super().instrument_id]
+        key = super().instrument_id
+        if key not in id_lookup:
+            raise WrongInstrumentException(f"Unknown instrument id: {key}.")
+        return id_lookup[key]
 
     @property
     def wavelength(self):
@@ -756,7 +766,11 @@ class LroMiniRfIsisLabelNaifSpiceDriver(Radar, NaifSpice, IsisLabel, Driver):
         """
 
         # Get float value of frequency in GHz
-        frequency = self.label['IsisCube']['Instrument']['Frequency'].value
+        frequency = self.label['IsisCube']['Instrument']['Frequency']
+        if isinstance(frequency, pvl.collections.Quantity):
+            frequency = frequency.value
+        elif isinstance(frequency, dict):
+            frequency = frequency["value"]
         #wavelength = spice.clight() / frequency / 1000.0
         wavelength = 299792.458 / frequency / 1000.0
         return wavelength
@@ -920,7 +934,10 @@ class LroLrocWacIsisLabelIsisSpiceDriver(PushFrame, IsisLabel, IsisSpice, Radial
         "WAC-UV" : "LRO_LROCWAC_UV",
         "WAC-VIS" : "LRO_LROCWAC_VIS"
         }
-        return id_lookup[super().instrument_id]
+        key = super().instrument_id
+        if key not in id_lookup:
+            raise WrongInstrumentException(f"Unknown instrument id: {key}.")
+        return id_lookup[key]
 
     @property
     def sensor_name(self):
@@ -1114,7 +1131,10 @@ class LroLrocWacIsisLabelNaifSpiceDriver(PushFrame, IsisLabel, NaifSpice, Radial
             "WAC-UV" : "LRO_LROCWAC_UV",
             "WAC-VIS" : "LRO_LROCWAC_VIS"
         }
-        return id_lookup[super().instrument_id]
+        key = super().instrument_id
+        if key not in id_lookup:
+            raise WrongInstrumentException(f"Unknown instrument id: {key}.")
+        return id_lookup[key]
 
     @property
     def sensor_model_version(self):

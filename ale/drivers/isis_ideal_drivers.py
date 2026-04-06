@@ -1,6 +1,6 @@
 from ale.base.data_isis import IsisSpice
 from ale.base.label_isis import IsisLabel
-from ale.base import Driver
+from ale.base import Driver, WrongInstrumentException
 from ale.base.type_sensor import LineScanner
 from ale.base.type_distortion import NoDistortion
 
@@ -23,7 +23,7 @@ class IdealLsIsisLabelIsisSpiceDriver(LineScanner, IsisSpice, IsisLabel, NoDisto
         instrument_id = super().instrument_id
 
         if instrument_id != "IdealCamera":
-            raise Exception(f"Instrument ID is {instrument_id} when it should be \"IdealCamera\"")
+            raise WrongInstrumentException(f"Instrument ID is {instrument_id} when it should be \"IdealCamera\"")
 
         return instrument_id
 
@@ -37,8 +37,13 @@ class IdealLsIsisLabelIsisSpiceDriver(LineScanner, IsisSpice, IsisLabel, NoDisto
         float :
             The image start ephemeris time
         """
-
-        return self.label.get('IsisCube').get('Instrument').get("EphemerisTime").value
+        if not hasattr(self, "_ephemeris_start_time"):
+            self._ephemeris_start_time = self.label['IsisCube']['Instrument']["EphemerisTime"]
+            if isinstance(self._ephemeris_start_time, pvl.collections.Quantity):
+                self._ephemeris_start_time = self._ephemeris_start_time.value
+            elif isinstance(self._ephemeris_start_time, dict):
+                self._ephemeris_start_time = self._ephemeris_start_time["value"]
+        return self._ephemeris_start_time
 
 
     @property

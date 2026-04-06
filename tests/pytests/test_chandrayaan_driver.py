@@ -1,4 +1,3 @@
-from cgi import test
 import pytest
 import ale
 import os
@@ -29,11 +28,27 @@ def mrffr_kernels(scope="module", autouse=True):
     for kern in binary_kernels:
         os.remove(kern)
 
+@pytest.fixture(scope='module')
+def tmc2_kernels():
+    kernels = get_image_kernels("ch2_tmc_ncn_20251220T0922071606_d_img_d18")
+    updated_kernels, binary_kernels = convert_kernels(kernels)
+    yield updated_kernels
+    for kern in binary_kernels:
+        os.remove(kern)
+
+@pytest.fixture(scope='module')
+def ohrc_kernels():
+    kernels = get_image_kernels("ch2_ohr_nrp_20251109T1108358871_d_img_d18")
+    updated_kernels, binary_kernels = convert_kernels(kernels)
+    yield updated_kernels
+    for kern in binary_kernels:
+        os.remove(kern)
+
 def test_chandrayaan_load(m3_kernels):
     label_file = get_image_label("M3T20090630T083407_V03_RDN", label_type="isis")
     compare_dict = get_isd("chandrayannM3")
     print("kernels: ", m3_kernels)
-    isd_str = ale.loads(label_file, props={"kernels": m3_kernels}, verbose=False)
+    isd_str = ale.loads(label_file, props={"kernels": m3_kernels, 'attach_kernels': False}, verbose=False)
     isd_obj = json.loads(isd_str)
     print(isd_str)
     x = compare_dicts(isd_obj, compare_dict)
@@ -43,7 +58,7 @@ def test_chandrayaan_mrffr_load(mrffr_kernels):
     label_file = get_image_label("fsb_00720_1cd_xhu_84n209_v1", label_type="isis3")
     compare_dict = get_isd("chandrayaan_mrffr")
 
-    isd_str = ale.loads(label_file, props={"kernels": mrffr_kernels, "nadir": True}, verbose=True)
+    isd_str = ale.loads(label_file, props={"kernels": mrffr_kernels, "nadir": True, 'attach_kernels': False}, verbose=True)
     isd_obj = json.loads(isd_str)
     x = compare_dicts(isd_obj, compare_dict)
     assert x == []
@@ -54,12 +69,28 @@ def test_chandrayaan_m3_pds_load(m3_kernels):
 
     # Patch the full path of the timing table onto the driver
     with patch("ale.drivers.chandrayaan_drivers.Chandrayaan1M3Pds3NaifSpiceDriver.utc_time_table", os.path.dirname(label_file)+"/M3T20090630T083407_V03_TIM_cropped.TAB"):
-        isd_str = ale.loads(label_file, props={"kernels": m3_kernels, "nadir": True})
+        isd_str = ale.loads(label_file, props={"kernels": m3_kernels, "nadir": True, 'attach_kernels': False})
         isd_obj = json.loads(isd_str)
         print(isd_obj)
         print(compare_dicts(isd_obj, compare_dict))
         x = compare_dicts(isd_obj, compare_dict)
         assert x == []
+
+def test_chandrayaan2_tmc2_load(tmc2_kernels):
+    label_file = get_image_label("ch2_tmc_ncn_20251220T0922071606_d_img_d18", label_type="isis")
+    compare_dict = get_isd("chandrayaan2_tmc2")
+    isd_str = ale.loads(label_file, props={"kernels": tmc2_kernels, 'attach_kernels': False}, verbose=True)
+    isd_obj = json.loads(isd_str)
+    x = compare_dicts(isd_obj, compare_dict)
+    assert x == []
+
+def test_chandrayaan2_ohrc_load(ohrc_kernels):
+    label_file = get_image_label("ch2_ohr_nrp_20251109T1108358871_d_img_d18", label_type="isis")
+    compare_dict = get_isd("chandrayaan2_ohrc")
+    isd_str = ale.loads(label_file, props={"kernels": ohrc_kernels, 'attach_kernels': False}, verbose=True)
+    isd_obj = json.loads(isd_str)
+    x = compare_dicts(isd_obj, compare_dict)
+    assert x == []
 
 class test_chandrayaan_m3_pds_naif(unittest.TestCase):
 
@@ -192,7 +223,7 @@ class test_chandrayaan2_tmc_isis_naif(unittest.TestCase):
         assert self.driver.short_mission_name == 'chandrayaan'
 
     def test_instrument_id(self):
-        assert self.driver.instrument_id == 'CHANDRAYAAN-2 ORBITER'
+        assert self.driver.instrument_id == 'CH2_TMC_FORE'
 
     def test_spacecraft_name(self):
         assert self.driver.spacecraft_name == 'Chandrayaan-2'
@@ -217,7 +248,7 @@ class test_chandrayaan2_ohrc_isis_naif(unittest.TestCase):
         assert self.driver.spacecraft_name == 'Chandrayaan-2'
 
     def test_instrument_id(self):
-        assert self.driver.instrument_id == 'CHANDRAYAAN-2 ORBITER'
+        assert self.driver.instrument_id == 'CH2_OHRC'
 
     def test_ikid(self):
         assert self.driver.ikid == -152270
@@ -250,9 +281,9 @@ class test_chandrayaan2_ohrc_isis_naif(unittest.TestCase):
             assert self.driver.detector_center_line   == 3003.2
 
     def test_focal2pixel_lines(self):
-        with patch('ale.spiceql_access.spiceql_call', side_effect=[-152270, {"frameCode": -152270}, {"INS-152270_PIXEL_SIZE": 12}, {}]) as spiceql_call:
-            assert self.driver.focal2pixel_lines == [0.0, 0.0, 8.333333333333333e-05]
+        with patch('ale.spiceql_access.spiceql_call', side_effect=[-152270, {"frameCode": -152270}, {"INS-152270_PIXEL_SIZE": 0.0000052}, {}]) as spiceql_call:
+            assert self.driver.focal2pixel_lines == [0.0, 192.30769230769232, 0.0]
 
     def test_focal2pixel_samples(self):
-        with patch('ale.spiceql_access.spiceql_call', side_effect=[-152270, {"frameCode": -152270}, {"INS-152270_PIXEL_SIZE": 12}, {}]) as spiceql_call:
-            assert self.driver.focal2pixel_samples == [0.0, -8.333333333333333e-05, 0]
+        with patch('ale.spiceql_access.spiceql_call', side_effect=[-152270, {"frameCode": -152270}, {"INS-152270_PIXEL_SIZE": 0.0000052}, {}]) as spiceql_call:
+            assert self.driver.focal2pixel_samples == [0.0, 0.0, 192.30769230769232]

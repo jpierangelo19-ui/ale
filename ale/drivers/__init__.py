@@ -9,7 +9,10 @@ from itertools import chain, compress
 import json
 import numpy as np
 import os
+import os.path
 import traceback
+from ale.base import WrongInstrumentException, WrongLabelTypeException
+import logging
 
 from ale.formatters.usgscsm_formatter import to_usgscsm
 from ale.formatters.isis_formatter import to_isis
@@ -105,7 +108,17 @@ def load(label, props={}, formatter='ale', verbose=False, only_isis_spice=False,
     """
     if isinstance(formatter, str):
         formatter = __formatters__[formatter]
-    
+
+    if isinstance(props, str):
+        if props in ("", "null"): 
+            props = {}
+        else:
+            props = json.loads(props)
+
+    logger_level = logger.getEffectiveLevel()
+    if verbose:
+        logger.setLevel(logging.DEBUG)
+
     driver_mask = [only_isis_spice, only_naif_spice]
     class_list = [IsisSpice, NaifSpice]
     class_list = list(compress(class_list, driver_mask))
@@ -116,6 +129,12 @@ def load(label, props={}, formatter='ale', verbose=False, only_isis_spice=False,
     drivers = chain.from_iterable(driver_list)
     drivers = sort_drivers([d[1] for d in drivers])
 
+    if not os.path.isfile(label):
+        raise FileNotFoundError('File "' + label + '" not found. \n' + 
+                                'Current Working Directory: "' + os.getcwd() + 
+                                '". \nMake sure your cube is present in your working directory, ' +
+                                'or that you specify the full and correct path to your cube.')
+
     if verbose:
         logger.info("Attempting to pre-parse label file")
     try:
@@ -125,7 +144,10 @@ def load(label, props={}, formatter='ale', verbose=False, only_isis_spice=False,
         if verbose:
             logger.info("First parse attempt failed with")
             logger.info(e)
-        # If pds3 label fails, try isis grammar
+        parsed_label = None
+
+    # If pds3 label fails, try isis grammar
+    if not parsed_label:
         try:
             parsed_label = parse_label(label, pvl.grammar.ISISGrammar())
         except Exception as e:
@@ -133,6 +155,19 @@ def load(label, props={}, formatter='ale', verbose=False, only_isis_spice=False,
                 logger.info("Second parse attempt failed with")
                 logger.info(e)
             # If both fail, then don't parse the label, and just pass the driver a file.
+            parsed_label = None
+
+    # If pvl label loading fails, try gdal
+    if not parsed_label:
+        try:
+            from osgeo import gdal
+            gdal.UseExceptions()
+            geodata = gdal.Open(label)
+            parsed_label = json.loads(geodata.GetMetadata("json:ISIS3")["doc"])
+        except Exception as e:
+            if verbose:
+                logger.info("Gdal parse attempt failed with")
+                logger.info(e)
             parsed_label = None
 
     if verbose:
@@ -150,16 +185,26 @@ def load(label, props={}, formatter='ale', verbose=False, only_isis_spice=False,
             res.instrument_id
             with res as driver:
                 isd = formatter(driver)
+                if 'attach_kernels' in props and props['attach_kernels'] is False and 'kernels' in isd:
+                    del isd['kernels']
                 if verbose:
                     logger.info(f"Success with: {driver.__class__.__name__}")
                     logger.info(f"ISD:\n{json.dumps(isd, indent=2, cls=AleJsonEncoder)}")
+                    logger.setLevel(logger_level)
                 return isd
+        except WrongLabelTypeException as e:
+            if verbose:
+                logger.info(f"Wrong label type for driver {driver.__class__.__name__}: {e}. Skipping driver.")
+        except WrongInstrumentException as e:
+            if verbose:
+                logger.info(f"Wrong instrument id for driver {driver.__class__.__name__}: {e}. Skipping driver.")
         except Exception as e:
             if verbose:
                 traceback.print_exc()
         if verbose:
-            logger.info(f'End {driver}\n\n')
-
+            logger.info(f'End {driver}\n')
+    if verbose:
+        logger.setLevel(logger_level)
     raise Exception('No Such Driver for Label')
 
 

@@ -5,11 +5,13 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import as_completed
 import logging
 import json 
+import os
 
 import numpy as np
 import scipy.constants
 from scipy.spatial.transform import Rotation as R
 import pyspiceql
+from pathlib import Path
 
 from ale.base import spiceql_mission_map
 from ale.base.type_sensor import LineScanner
@@ -86,16 +88,39 @@ class NaifSpice():
                 try:
                     self._kernels = kernel_access.get_kernels_from_isis_pvl(self._props['kernels'])
                 except Exception as e:
-                    self._kernels =  self._props['kernels']
+                    if isinstance(self._props['kernels'], list):
+                        self._kernels = { "misc": self._props['kernels'] }
+                    elif isinstance(self._props['kernels'], dict):
+                        for k,v in self._props['kernels'].items():
+                            # check that the keys are valid kernel types
+                            if k not in ["ck", "spk", "tspk", "fk", "ik", "iak", "pck", "lsk", "sclk"]:
+                                raise ValueError(f"Unknown kernel type: {k}")
+                            # check that kernel values are in list format
+                            if not isinstance(v, list):
+                                raise ValueError(f"Kernels for {k} must be in list format.")
+                        self._kernels = self._props['kernels']
+                    else:
+                        self._kernels = self._props['kernels']
             elif self.search_kernels == True:
+                if not self.use_web:
+                    if spice_root:
+                        pyspiceql.setDbFilePath(str(Path(spice_root) / "base"))
+                    else: 
+                        root = os.environ.get('ISISDATA', None)
+                        if not root:
+                            root = os.environ.get('SPICEROOT', None)
+                        if root is None:
+                            raise ValueError("No ISISDATA, ALESPICEROOT or SPICEROOT environment variable found")
+                        pyspiceql.setDbFilePath(str(Path(root) / "base"))
+
                 _, kernels = pyspiceql.searchForKernelsets([self.spiceql_mission, self.target_name, "base"], startTime=self.ephemeris_start_time, stopTime=self.ephemeris_stop_time, useWeb=self.use_web)
                 self._kernels = kernels  
             elif spice_root and not self.use_web:
                 search_results = kernel_access.get_metakernels(spice_root, missions=self.short_mission_name, years=self.utc_start_time.year, versions='latest')
-
                 if search_results['count'] == 0:
                     raise ValueError(f'Failed to find metakernels. mission: {self.short_mission_name}, year:{self.utc_start_time.year}, versions="latest" spice root = "{spice_root}"')
-                self._kernels = [search_results['data'][0]['path']]
+                else:
+                    self._kernels = [search_results['data'][0]['path']]
             else:
                 self._kernels = {}
             logger.debug(f"kernels: {json.dumps(self._kernels, indent=2)}")
@@ -856,6 +881,5 @@ class NaifSpice():
         if function_name in memo_funcs and data_dir == "" and self.use_web == False:
             function_name = f"{function_name}"
         ret = spiceql_access.spiceql_call(function_name, function_args, self.use_web)
-        logger.debug(f"Returning data_naif spiceql_call function ret: {ret}")
         return ret
     

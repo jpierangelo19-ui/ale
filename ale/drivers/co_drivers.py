@@ -5,7 +5,7 @@ import numpy as np
 
 import pvl
 from pyspiceql import pyspiceql
-from ale.base import Driver
+from ale.base import Driver, WrongInstrumentException
 from ale.base.data_naif import NaifSpice
 from ale.base.data_isis import IsisSpice
 from ale.base.label_pds3 import Pds3Label
@@ -141,7 +141,10 @@ class CassiniIssIsisLabelNaifSpiceDriver(Framer, IsisLabel, NaifSpice, RadialDis
         : str
           instrument id
         """
-        return iss_id_lookup[super().instrument_id]
+        try:
+            return iss_id_lookup[super().instrument_id]
+        except KeyError:
+            raise WrongInstrumentException(f"Unknown instrument id: {super().instrument_id}.")
 
     @property
     def spacecraft_name(self):
@@ -320,7 +323,10 @@ class CassiniVimsIsisLabelNaifSpiceDriver(LineScanner, IsisLabel, NaifSpice, NoD
     @property
     def vims_channel(self):
         if not hasattr(self, '_vims_channel'):
-            self._vims_channel = self.label['IsisCube']["Instrument"]["Channel"]
+            try:
+                self._vims_channel = self.label['IsisCube']["Instrument"]["Channel"]
+            except KeyError:
+                raise WrongInstrumentException(f"Missing Channel keyword. Expected Channel in ISIS label.")
         return self._vims_channel
 
     @property
@@ -337,7 +343,10 @@ class CassiniVimsIsisLabelNaifSpiceDriver(LineScanner, IsisLabel, NaifSpice, NoD
         : str
           instrument id
         """
-        return vims_id_lookup[super().instrument_id + "_" + self.vims_channel]
+        key = super().instrument_id + "_" + self.vims_channel
+        if key not in vims_id_lookup:
+            raise WrongInstrumentException(f"Unknown instrument id: {key}.")
+        return vims_id_lookup[key]
 
     @property
     def sensor_name(self):
@@ -375,11 +384,14 @@ class CassiniVimsIsisLabelNaifSpiceDriver(LineScanner, IsisLabel, NaifSpice, NoD
             exposure_duration = self.label['IsisCube']['Instrument']['ExposureDuration']
 
             for i in exposure_duration:
-                if i.units == "VIS":
-                    exposure_duration = i
+                if isinstance(i, pvl.collections.Quantity):
+                    if i.units == "VIS":
+                        exposure_duration = i.value
+                elif isinstance(i, dict):
+                    if i["unit"] == "VIS":
+                        exposure_duration = i["value"]
 
-            exposure_duration = exposure_duration.value * 0.001
-            return exposure_duration
+            return exposure_duration * 0.001
         else:
             return self.line_exposure_duration
 
@@ -465,8 +477,15 @@ class CassiniVimsIsisLabelIsisSpiceDriver(LineScanner, IsisLabel, IsisSpice, NoD
           instrument id
         """
 
-        image_type = self.label['IsisCube']["Instrument"]["Channel"]
-        return vims_id_lookup[super().instrument_id + "_" + image_type]
+        try:
+            image_type = self.label['IsisCube']["Instrument"]["Channel"]
+        except KeyError:
+            raise WrongInstrumentException(f"Unknown instrument id: {super().instrument_id}.")
+        
+        key = super().instrument_id + "_" + image_type
+        if key not in vims_id_lookup:
+            raise WrongInstrumentException(f"Unknown instrument id: {key}.")
+        return vims_id_lookup[key]
 
     @property
     def sensor_name(self):
@@ -502,13 +521,15 @@ class CassiniVimsIsisLabelIsisSpiceDriver(LineScanner, IsisLabel, IsisSpice, NoD
         """
         if 'ExposureDuration' in self.label['IsisCube']['Instrument']:
             exposure_duration = self.label['IsisCube']['Instrument']['ExposureDuration']
-
             for i in exposure_duration:
-                if i.units == "VIS":
-                    exposure_duration = i
+                if isinstance(exposure_duration, pvl.collections.Quantity):
+                    if i.units == "VIS":
+                        exposure_duration = i.value
+                elif isinstance(exposure_duration, dict):
+                    if i["unit"] == "VIS":
+                        exposure_duration = i["value"]
 
-            exposure_duration = exposure_duration.value * 0.001
-            return exposure_duration
+            return exposure_duration * 0.001
         else:
             return self.line_exposure_duration
 
@@ -533,7 +554,10 @@ class CassiniIssPds3LabelNaifSpiceDriver(Framer, Pds3Label, NaifSpice, RadialDis
         : str
           instrument id
         """
-        return iss_id_lookup[super().instrument_id]
+        try:
+            return iss_id_lookup[super().instrument_id]
+        except KeyError:
+            raise WrongInstrumentException(f"Unknown instrument id: {super().instrument_id}.")
 
     @property
     def focal_epsilon(self):
@@ -758,7 +782,10 @@ class CassiniIssIsisLabelIsisSpiceDriver(Framer, IsisLabel, IsisSpice, NoDistort
         : str
           ID of the sensor
         """
-        return iss_id_lookup[super().instrument_id]
+        try:
+            return iss_id_lookup[super().instrument_id]
+        except KeyError:
+            raise WrongInstrumentException(f"Unknown instrument id: {super().instrument_id}.")
 
     @property
     def sensor_name(self):

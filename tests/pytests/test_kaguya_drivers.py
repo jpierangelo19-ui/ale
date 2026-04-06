@@ -41,7 +41,7 @@ def test_kaguya_load(test_kernels, label_type, image):
         compare_isd = get_isd(image_dict[image])
     label_file = get_image_label(image, label_type)
 
-    isd_str = ale.loads(label_file, props={'kernels': test_kernels[image]}, verbose=False)
+    isd_str = ale.loads(label_file, props={'kernels': test_kernels[image], 'attach_kernels': False}, verbose=False)
     isd_obj = json.loads(isd_str)
 
     assert compare_dicts(isd_obj, compare_isd) == []
@@ -194,7 +194,7 @@ class test_kaguyatc_isis_isis(unittest.TestCase):
 
     def test_bad_instrument_id(self):
         self.driver.label['IsisCube']['Instrument']['InstrumentId'] = 'FAIL'
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ale.base.WrongInstrumentException):
             self.driver.instrument_id
 
     def test_spacecraft_name(self):

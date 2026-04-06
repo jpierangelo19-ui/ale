@@ -35,6 +35,45 @@ release.
 
 ## [Unreleased]
 
+### Changed
+- Reduced linescan ISD ephemeris sampling from one-per-line to every 10th line for images with 1000+ lines, significantly reducing ISD file sizes and load times for large sensors. Configurable via `reduction` and `ephem_sample_rate` props. [#677](https://github.com/DOI-USGS/ale/pull/677)
+- Throw error when input file does not exist. [#692](https://github.com/DOI-USGS/ale/pull/692)
+
+### Fixed
+- Fixed Eigen 5.x compatibility by removing version constraint in CMakeLists.txt [#677](https://github.com/DOI-USGS/ale/pull/677)
+
+## [1.1.3] - 2026-03-12
+
+### Fixed
+- Fixed the `props` checker to catch string "null" [#690](https://github.com/DOI-USGS/ale/pull/690)
+
+## [1.1.2] - 2026-03-03
+
+### Added
+- Added better logging when running verbose on ale::load [#688](https://github.com/DOI-USGS/ale/pull/688)
+
+## [1.1.1] - 2026-02-20
+
+### Fixed
+- Adjust instrument pointing information to match ISIS [#686](https://github.com/DOI-USGS/ale/pull/686)
+
+## [1.1.0] - 2026-02-17
+
+### Fixed
+- Fixed ephemeris stop time in Chandrayaan2 TMC2 driver. [#681](https://github.com/DOI-USGS/ale/pull/681/changes)
+
+- Fixed focal plane to detector lines/samples as well as rely on IAK for rotation corrections in Chandrayaan2 OHRC driver. [#682](https://github.com/DOI-USGS/ale/pull/682)
+
+### Added
+- Added TMC_FORE, TMC_NADIR, and TMC_AFT instrument IDs to Chandrayaan2 driver. [#678](https://github.com/DOI-USGS/ale/pull/678)
+
+- Added optional boolean flag `remove_kernels` to the `props` dict in the `loads()` func to allow the user to add the `kernels` key in the output ISD. Added the `misc` kernel key for user-entered kernels. Format the kernels value to always be dict type in ISD generation. [#675](https://github.com/DOI-USGS/ale/pull/675)
+
+- Added support for loading ISIS metadata from GDAL drivers when using GDAL 3.12.0 or newer. [#676](https://github.com/DOI-USGS/ale/pull/676)
+
+### Changed
+- Sets ALE's default log level to ERROR instead of INFO, which was too verbose. [#679](https://github.com/DOI-USGS/ale/pull/679)
+
 ## [1.0.2]
 
 - Fixed bug where generic CH2 kernels were using for TMC-2 [#672](https://github.com/DOI-USGS/ale/pull/672)
